@@ -3,6 +3,10 @@ import type { Fighter } from "../types/fighter";
 
 const keysDown: { [key: string]: boolean } = {};
 
+export const resetKeys = () => {
+  Object.keys(keysDown).forEach(key => delete keysDown[key]);
+};
+
 export const InputSystem = (entities: any, { input }: any) => {
   // 1. Събираме информация за натиснати клавиши
   input.forEach((e: any) => {
