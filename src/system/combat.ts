@@ -14,8 +14,11 @@ export const CombatSystem = (entities: any, { dispatch }: any) => {
         attacker.isPunching = false;
       }
 
+      // В онлайн режим само локалният играч може да нанася удари, за да избегнем проблеми със синхронизацията
+      const isLocal = entities.gameInfo.mode !== 'online' || entities.gameInfo.localPlayerId === attacker.id;
+
       // Проверяваме за удар (само в първия кадър на удара)
-      if (attacker.punchTimer === PUNCH_COOLDOWN - 1) {
+      if (attacker.punchTimer === PUNCH_COOLDOWN - 1 && isLocal) {
         const defender = attacker.id === 'player1' ? p2 : p1;
         
         // Разстояние по X между двамата

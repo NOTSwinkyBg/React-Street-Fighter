@@ -16,6 +16,9 @@ export const PhysicsSystem = (entities: any) => {
       p.vy = 0;
     }
 
+    // В онлайн режим не местим локално другия играч
+    if (entities.gameInfo.mode === 'online' && entities.gameInfo.localPlayerId !== p.id) return;
+
     // 3. Местим героя по X
     p.x += p.vx;
 
