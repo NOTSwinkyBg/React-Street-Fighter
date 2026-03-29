@@ -46,35 +46,32 @@ export default function StreetFighterPro() {
   const remoteStateRef = useRef<any>(null); 
   // НОВО: Пазим връзката в Ref, за да е достъпна мигновено за GameEngine
   const connRef = useRef<any>(null); 
+  const hitQueueRef = useRef<any[]>([]);
+
+  const handleNetworkData = (data: any) => {
+      if (data === 'START_GAME') {
+          startGame('online', 'player1');
+      } 
+      else if (data && data.type === 'HIT') {
+          // Получихме удар от мрежата! Слагаме го в опашката.
+          hitQueueRef.current.push(data);
+      } 
+      else {
+          remoteStateRef.current = data; 
+      }
+  };
 
   // Създаване на Хост (Играч 1)
   const createRoom = () => {
       setStatus('Създаване на стая...');
       const peer = new Peer();
-      
-      peer.on('open', (id) => {
-          setPeerId(id);
-          setStatus(`Чакаме противник... Вашият код е: ${id}`);
-      });
-
+      peer.on('open', (id) => { setPeerId(id); setStatus(`Чакаме противник... Вашият код е: ${id}`); });
       peer.on('connection', (conn) => {
           setStatus('Противникът се свърза! Зареждане...');
-          connRef.current = conn; // Запазваме мигновено
-          
-          conn.on('data', (data: any) => { 
-              // НОВО: Чакаме тайното съобщение от Играч 2, за да стартираме!
-              if (data === 'START_GAME') {
-                  startGame('online', 'player1');
-              } else {
-                  remoteStateRef.current = data; 
-              }
-          });
+          connRef.current = conn;
+          conn.on('data', handleNetworkData);
       });
-
-      peer.on('error', (err) => {
-          setStatus('Грешка: ' + err.message);
-      });
-
+      peer.on('error', (err) => setStatus('Грешка: ' + err.message));
       peerRef.current = peer;
   };
 
@@ -83,24 +80,16 @@ export default function StreetFighterPro() {
       if (!joinId) return;
       setStatus('Свързване с хоста...');
       const peer = new Peer();
-      
       peer.on('open', () => {
-          const conn = peer.connect(joinId, { reliable: true }); // true за надеждност
+          const conn = peer.connect(joinId, { reliable: false });
           connRef.current = conn;
-          
-          conn.on('data', (data) => { remoteStateRef.current = data; });
-          
+          conn.on('data', handleNetworkData);
           conn.on('open', () => { 
-              // НОВО: Пращаме сигнал на Хоста, че сме готови!
               conn.send('START_GAME');
               startGame('online', 'player2'); 
           });
       });
-
-      peer.on('error', (_err) => {
-          setStatus('Невалиден код или грешка в мрежата!');
-      });
-
+      peer.on('error', (_err) => setStatus('Грешка в мрежата!'));
       peerRef.current = peer;
   };
 
@@ -109,7 +98,8 @@ export default function StreetFighterPro() {
         mode: gameMode, 
         localPlayerId: localPlayerRole, 
         conn: connRef.current, // Вече взимаме връзката от Ref-а
-        remoteStateRef: remoteStateRef 
+        remoteStateRef: remoteStateRef,
+        hitQueueRef: hitQueueRef
     },
     player1: {
       fighter: {
@@ -142,6 +132,7 @@ export default function StreetFighterPro() {
     setHealthInfo({ p1: 100, p2: 100 });
     setWinner(null);
     setScreen('game');
+    hitQueueRef.current = [];
 
     resetKeys();
     if (engineRef.current) {

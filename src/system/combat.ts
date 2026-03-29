@@ -7,42 +7,33 @@ export const CombatSystem = (entities: any, { dispatch }: any) => {
 
   [p1, p2].forEach(attacker => {
     if (attacker.punchTimer > 0) {
-      attacker.punchTimer--; // Намаляваме таймера на удара
+      attacker.punchTimer--;
+      if (attacker.punchTimer < PUNCH_COOLDOWN / 2) attacker.isPunching = false;
 
-      // Махаме картинката на юмрука по средата на анимацията
-      if (attacker.punchTimer < PUNCH_COOLDOWN / 2) {
-        attacker.isPunching = false;
-      }
-
-      // В онлайн режим само локалният играч може да нанася удари, за да избегнем проблеми със синхронизацията
+      // Само този, който играе на компютъра, изчислява своите удари
       const isLocal = entities.gameInfo.mode !== 'online' || entities.gameInfo.localPlayerId === attacker.id;
 
-      // Проверяваме за удар (само в първия кадър на удара)
       if (attacker.punchTimer === PUNCH_COOLDOWN - 1 && isLocal) {
         const defender = attacker.id === 'player1' ? p2 : p1;
-        
-        // Разстояние по X между двамата
         const distanceX = Math.abs(attacker.x - defender.x);
-        // Разстояние по Y (не можеш да удариш някой, който е скочил високо)
         const distanceY = Math.abs(attacker.y - defender.y);
 
-        // Хитбокс логика
+        // УДАР!
         if (distanceX < HIT_REACH && distanceY < attacker.height) {
           defender.health -= PUNCH_DAMAGE;
+          defender.x += attacker.facing * 30; // Knockback
           
-          // Изпращаме събитие към React, за да обнови Health Bar-овете
           dispatch({ type: 'update-health', p1Health: p1.health, p2Health: p2.health });
-
-          // Ефект на отблъскване (Knockback) при удар
-          defender.x += attacker.facing * 30;
-
-          if (defender.health <= 0) {
-            dispatch({ type: 'game-over', winner: attacker.id });
+          
+          // НОВО: Ако играем онлайн, изпращаме специално съобщение "УДАРИХ ТЕ!" по мрежата
+          if (entities.gameInfo.mode === 'online' && entities.gameInfo.conn) {
+              entities.gameInfo.conn.send({ type: 'HIT', damage: PUNCH_DAMAGE, facing: attacker.facing });
           }
+
+          if (defender.health <= 0) dispatch({ type: 'game-over', winner: attacker.id });
         }
       }
     }
   });
-
   return entities;
 };
