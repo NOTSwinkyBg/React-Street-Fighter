@@ -6,15 +6,17 @@ import { InputSystem, resetKeys } from "./system/inputLogic";
 import { PhysicsSystem } from "./system/physics";
 import { CombatSystem } from "./system/combat";
 import type { PlayerId, Screen, GameMode } from "./types/fighter";
-import {
-  onAuthStateChanged,
-  signInAnonymously,
-  signInWithCustomToken,
-} from "firebase/auth";
-import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
-import { APP_ID, auth, db } from "./types/firebase";
+// import {
+//   onAuthStateChanged,
+//   signInAnonymously,
+//   signInWithCustomToken,
+// } from "firebase/auth";
+// import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
+// import { APP_ID, auth, db } from "./types/firebase";
 import { AISystem } from "./system/aiSystem";
 import { NetworkSystem } from "./system/NetworkSystem";
+
+import { Peer } from 'peerjs';
 
 declare global {
   var __firebase_config: string | undefined;
@@ -30,68 +32,105 @@ export default function StreetFighter() {
   const [winner, setWinner] = useState<string | null>(null);
   //const [isRunning, setIsRunning] = useState(true); МАХАМЕ, защото вече спираме играта чрез наличието на победител (winner)
 
-  // Онлайн състояния
-  const [user, setUser] = useState<any>(null);
-  const [matchId, setMatchId] = useState("");
-  const [localPlayerRole, setLocalPlayerRole] = useState<PlayerId>("player1");
-  const [remoteState, setRemoteState] = useState<any>(null);
+  // // Онлайн състояния
+  // const [user, setUser] = useState<any>(null);
+  // const [matchId, setMatchId] = useState("");
+  // const [localPlayerRole, setLocalPlayerRole] = useState<PlayerId>("player1");
+  // const [remoteState, setRemoteState] = useState<any>(null);
+
+  const [peerId, setPeerId] = useState<string>('');
+  const [joinId, setJoinId] = useState<string>('');
+  const [connection, setConnection] = useState<any>(null);
+  const [localPlayerRole, setLocalPlayerRole] = useState<PlayerId>('player1');
+  const [status, setStatus] = useState<string>('');
 
   const engineRef = useRef<any>(null);
+  const peerRef = useRef<any>(null);
+  const remoteStateRef = useRef<any>(null);
 
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (
-          typeof __initial_auth_token !== "undefined" &&
-          __initial_auth_token
-        ) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (e) {
-        console.error("Firebase Auth Error", e);
-      }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
-  }, []);
+  // useEffect(() => {
+  //   const initAuth = async () => {
+  //     try {
+  //       if (
+  //         typeof __initial_auth_token !== "undefined" &&
+  //         __initial_auth_token
+  //       ) {
+  //         await signInWithCustomToken(auth, __initial_auth_token);
+  //       } else {
+  //         await signInAnonymously(auth);
+  //       }
+  //     } catch (e) {
+  //       console.error("Firebase Auth Error", e);
+  //     }
+  //   };
+  //   initAuth();
+  //   const unsubscribe = onAuthStateChanged(auth, setUser);
+  //   return () => unsubscribe();
+  // }, []);
 
-  // --- ОНЛАЙН СИНХРОНИЗАЦИЯ (Слушател) ---
-  useEffect(() => {
-    if (screen !== "game" || gameMode !== "online" || !matchId || !user) return;
+  // // --- ОНЛАЙН СИНХРОНИЗАЦИЯ (Слушател) ---
+  // useEffect(() => {
+  //   if (screen !== "game" || gameMode !== "online" || !matchId || !user) return;
 
-    const remoteRole = localPlayerRole === "player1" ? "p2" : "p1";
-    const matchRef = doc(
-      collection(db, "artifacts", APP_ID, "public", "data", "matches"),
-      matchId,
-    );
+  //   const remoteRole = localPlayerRole === "player1" ? "p2" : "p1";
+  //   const matchRef = doc(
+  //     collection(db, "artifacts", APP_ID, "public", "data", "matches"),
+  //     matchId,
+  //   );
 
-    const unsub = onSnapshot(
-      matchRef,
-      (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          if (data[remoteRole]) setRemoteState(data[remoteRole]);
-        }
-      },
-      (err) => console.error("Sync error", err),
-    );
+  //   const unsub = onSnapshot(
+  //     matchRef,
+  //     (snapshot) => {
+  //       if (snapshot.exists()) {
+  //         const data = snapshot.data();
+  //         if (data[remoteRole]) setRemoteState(data[remoteRole]);
+  //       }
+  //     },
+  //     (err) => console.error("Sync error", err),
+  //   );
 
-    return () => unsub();
-  }, [screen, gameMode, matchId, user, localPlayerRole]);
+  //   return () => unsub();
+  // }, [screen, gameMode, matchId, user, localPlayerRole]);
 
-  // Функция, която Engine-а ще ползва за да праща данни към Firebase
-  const syncToCloud = async (playerData: any) => {
-    if (!matchId || !user) return;
-    const role = localPlayerRole === "player1" ? "p1" : "p2";
-    const matchRef = doc(
-      collection(db, "artifacts", APP_ID, "public", "data", "matches"),
-      matchId,
-    );
-    await setDoc(matchRef, { [role]: playerData }, { merge: true });
-  };
+  // // Функция, която Engine-а ще ползва за да праща данни към Firebase
+  // const syncToCloud = async (playerData: any) => {
+  //   if (!matchId || !user) return;
+  //   const role = localPlayerRole === "player1" ? "p1" : "p2";
+  //   const matchRef = doc(
+  //     collection(db, "artifacts", APP_ID, "public", "data", "matches"),
+  //     matchId,
+  //   );
+  //   await setDoc(matchRef, { [role]: playerData }, { merge: true });
+  // };
+
+  const createRoom = () => {
+    setStatus('Създаване на стая...');
+    const peer = new Peer();
+    peer.on('open', (id) => {
+      setPeerId(id);
+      setStatus(`Чакаме противник... Вашият код е: ${id}`);
+    });
+    peer.on('connection', (conn) => {
+      setStatus('Противникът се свърза! Зареждане...');
+      setConnection(conn);
+
+      conn.on('data', (data) => {remoteStateRef.current = data;});
+      conn.on('open', () => {startGame('online', 'player1')});
+    })
+  }
+
+  const joinRoom = () => {
+    if(!joinId) return;
+    setStatus('Свързване с хоста...');
+    const peer = new Peer();
+    peer.on('open', () =>{
+      const conn = peer.connect(joinId);
+      setConnection(conn);
+
+      conn.on('data', (data) => {remoteStateRef.current = data;});
+      conn.on('open', () => {startGame('online', 'player1')});
+    })
+  }
 
   // Първоначалните обекти (Entities)
   const setupEntities = () => ({
@@ -99,9 +138,8 @@ export default function StreetFighter() {
     gameInfo: {
       mode: gameMode,
       localPlayerId: localPlayerRole,
-      matchId: matchId,
-      syncDoc: syncToCloud,
-      remoteState: remoteState,
+      conn: connection,
+      remoteStateRef: remoteStateRef
     },
     player1: {
       fighter: {
@@ -146,19 +184,19 @@ export default function StreetFighter() {
     },
   });
 
-  useEffect(() => {
-    if (engineRef.current && remoteState) {
-      engineRef.current.swap({
-        ...setupEntities(),
-        gameInfo: { ...setupEntities().gameInfo, remoteState },
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remoteState]);
+  // useEffect(() => {
+  //   if (engineRef.current && remoteState) {
+  //     engineRef.current.swap({
+  //       ...setupEntities(),
+  //       gameInfo: { ...setupEntities().gameInfo, remoteState },
+  //     });
+  //   }
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [remoteState]);
 
   // Обработка на събития от Системите
   const onEvent = (e: any) => {
-    if (e.type === "update-health") {
+    if (e.type === "update-health" || e.type === "force-health-update") {
       setHealthInfo({ p1: e.p1Health, p2: e.p2Health });
     } else if (e.type === "game-over") {
       setWinner(e.winner === "player1" ? "ИГРАЧ 1 (СИН)" : "ИГРАЧ 2 (ЧЕРВЕН)");
@@ -220,19 +258,15 @@ export default function StreetFighter() {
         <div className="bg-gray-800 p-8 rounded-xl border border-gray-700 w-full max-w-md shadow-2xl">
           <div className="mb-8 border-b border-gray-700 pb-6">
             <h3 className="font-bold mb-2">Създай Игра (Host)</h3>
-            <button
-              onClick={() => {
-                const code = Math.random()
-                  .toString(36)
-                  .substring(2, 8)
-                  .toUpperCase();
-                setMatchId(code);
-                startGame("online", "player1");
-              }}
-              className="w-full p-3 bg-blue-600 rounded-lg font-bold hover:bg-blue-500 transition"
-            >
-              Създай Стая
+            <button onClick={createRoom} disabled={!!peerId} className="w-full p-3 bg-blue-600 rounded-lg font-bold hover:bg-blue-500 transition disabled:opacity-50">
+              Създай стая
             </button>
+            {peerId && (
+              <div className="mt-4 p-3 bg-gray-900 rounded text-center">
+                <p className="text-sm text-gray-400 mb-1">Кажи този код на приятел:</p>
+                <p className="font-mono text-xl text-green-400 font-bold select-all">{peerId}</p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -240,21 +274,22 @@ export default function StreetFighter() {
             <input
               type="text"
               placeholder="Въведи Код на стаята..."
-              onChange={(e) => setMatchId(e.target.value.toUpperCase())}
+              onChange={(e) => setJoinId(e.target.value.toUpperCase())}
               className="w-full p-3 rounded-lg bg-gray-900 border border-gray-600 mb-3 focus:ring-purple-500 uppercase font-mono"
             />
             <button
-              onClick={() => {
-                if (matchId.length > 3) startGame("online", "player2");
-              }}
-              className="w-full p-3 bg-purple-600 rounded-lg font-bold hover:bg-purple-500 transition"
+              onClick={joinRoom} disabled={!joinId}
+              className="w-full p-3 bg-purple-600 rounded-lg font-bold hover:bg-purple-500 transition disabled:opacity-50"
             >
               Влез в Стаята
             </button>
           </div>
         </div>
         <button
-          onClick={() => setScreen("menu")}
+          onClick={() => {
+            if (peerRef.current) peerRef.current.destroy();
+            setScreen('menu');
+          }}
           className="mt-8 text-gray-400 hover:text-white underline"
         >
           Върни се назад
@@ -268,7 +303,7 @@ export default function StreetFighter() {
         <div className="absolute top-4 left-4 bg-gray-800 p-2 rounded border border-gray-700 text-xs text-gray-400">
           Код на стаята:{" "}
           <span className="font-bold text-white tracking-widest">
-            {matchId}
+            {joinId}
           </span>
           <span className="ml-2">
             | Ти си:{" "}

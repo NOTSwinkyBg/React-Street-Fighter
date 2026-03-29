@@ -1,37 +1,37 @@
 import { PUNCH_COOLDOWN } from "../types/constants";
 
-export const NetworkSystem = (entities: any, { time }: any) => {
+export const NetworkSystem = (entities: any, {time, dispatch}: any) => {
     const info = entities.gameInfo;
-    if (info.mode !== 'online' || !info.matchId) return entities;
+    if (info.mode !== 'online' || !info.conn) return entities;
 
     const localFighter = entities[info.localPlayerId].fighter;
     const remoteId = info.localPlayerId === 'player1' ? 'player2' : 'player1';
     const remoteFighter = entities[remoteId].fighter;
 
-    // Изпращаме нашите данни на всеки 100ms
     if (!info.lastSync) info.lastSync = 0;
-    if (time.current - info.lastSync > 100) {
+    if (time.current - info.lastSync > 30) {
         info.lastSync = time.current;
-        if (info.syncDoc) {
-            info.syncDoc({
-                x: localFighter.x, y: localFighter.y, 
-                isPunching: localFighter.isPunching, health: localFighter.health, facing: localFighter.facing
-            });
-        }
+        info.conn.send({
+            x: localFighter.x, y: localFighter.y,
+            isPunching: localFighter.isPunching, health: localFighter.health, facing: localFighter.facing
+        });
     }
 
-    // Четем данните на другия (които React компонента е записал в info.remoteState)
-    if (info.remoteState) {
-        remoteFighter.x = info.remoteState.x;
-        remoteFighter.y = info.remoteState.y;
-        if (info.remoteState.isPunching && remoteFighter.punchTimer === 0) {
+    const remoteData = info.remoteStateRef.current;
+    if (remoteData) {
+        remoteFighter.x = remoteData.x;
+        remoteFighter.y = remoteData.y;
+        if(remoteData.isPunching && remoteFighter.punchTimer === 0){
             remoteFighter.isPunching = true;
             remoteFighter.punchTimer = PUNCH_COOLDOWN;
         }
-        // За да избегнем десинхронизация на кръвта
-        remoteFighter.health = info.remoteState.health;
-        remoteFighter.facing = info.remoteState.facing;
+        remoteFighter.facing  = remoteData.facing;
+
+        if (remoteFighter.health !== remoteData.health) {
+            remoteFighter.health = remoteData.health;
+            dispatch({type :'force-health-update', p1: entities.player1.fighter.health, p2: entities.player2.fighter.health});
+        }
     }
 
     return entities;
-};
+}
