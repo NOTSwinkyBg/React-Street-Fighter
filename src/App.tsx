@@ -85,7 +85,7 @@ export default function StreetFighterPro() {
       const peer = new Peer();
       
       peer.on('open', () => {
-          const conn = peer.connect(joinId, { reliable: false }); // false е по-добре за бързи игри
+          const conn = peer.connect(joinId, { reliable: true }); // true за надеждност
           connRef.current = conn;
           
           conn.on('data', (data) => { remoteStateRef.current = data; });
